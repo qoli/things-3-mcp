@@ -203,22 +203,28 @@ async def search(query: str) -> list[Any]:
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-async def get_task(id: str) -> list[Any]:
+async def get_task(id: str) -> dict[str, Any]:
     """Get a task by ID."""
     return things.get(id)
 
 
-def run_command(command: str, **arguments: Any) -> None:
+def run_command(command: str, **arguments: Any) -> dict[str, Any]:
     token = get_token()
     if should_dedupe(command, token, arguments):
-        return
+        return {
+            "ok": False,
+            "deduped": True,
+            "reason": "recent_command",
+        }
+    url = build_things_url(command=command, token=token, reveal=False, **arguments)
     subprocess.Popen(
         [
             "open",
             "-g",
-            build_things_url(command=command, token=token, reveal=False, **arguments),
+            url,
         ]
     )
+    return {"ok": True, "url": url}
 
 
 def has_recent_duplicate_todo(title: str, list_name: Optional[str]) -> bool:
@@ -261,7 +267,7 @@ async def update_todo(
     notes: str = None,
     when: str = None,
     deadline: str = None,
-) -> None:
+) -> dict[str, Any]:
     """Update a todo.
 
     Args:
@@ -284,7 +290,7 @@ async def update_todo(
     if deadline:
         arguments["deadline"] = deadline
 
-    run_command("update", id=id, **arguments)
+    return run_command("update", id=id, **arguments)
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True, destructiveHint=False))
@@ -295,7 +301,7 @@ async def update_project(
     notes: str = None,
     when: str = None,
     deadline: str = None,
-) -> None:
+) -> dict[str, Any]:
     """Update a project.
 
     Args:
@@ -318,17 +324,17 @@ async def update_project(
     if deadline:
         arguments["deadline"] = deadline
 
-    run_command("update-project", id=id, **arguments)
+    return run_command("update-project", id=id, **arguments)
 
 
-@mcp.tool(annotations=ToolAnnotations(idempotentHint=True, destructiveHint=False))
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=False, destructiveHint=False))
 async def create_todo(
     title: str,
     list: str = None,
     notes: str = None,
     when: str = None,
     deadline: str = None,
-) -> None:
+) -> dict[str, Any]:
     """Create a todo.
 
     Args:
@@ -351,19 +357,23 @@ async def create_todo(
         arguments["deadline"] = deadline
 
     if has_recent_duplicate_todo(title=title, list_name=list):
-        return
+        return {
+            "ok": False,
+            "deduped": True,
+            "reason": "recent_duplicate",
+        }
 
-    run_command("add", **arguments)
+    return run_command("add", **arguments)
 
 
-@mcp.tool(annotations=ToolAnnotations(idempotentHint=True, destructiveHint=False))
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=False, destructiveHint=False))
 async def create_project(
     title: str,
     area: str = None,
     notes: str = None,
     when: str = None,
     deadline: str = None,
-) -> None:
+) -> dict[str, Any]:
     """Create a project.
 
     Args:
@@ -385,7 +395,7 @@ async def create_project(
     if deadline:
         arguments["deadline"] = deadline
 
-    run_command("add-project", **arguments)
+    return run_command("add-project", **arguments)
 
 
 def main():
@@ -402,7 +412,7 @@ def main():
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
-            allow_credentials=True,
+            allow_credentials=False,
             allow_methods=["GET", "POST", "OPTIONS"],
             allow_headers=["*"],
             expose_headers=["mcp-session-id", "mcp-protocol-version"],
