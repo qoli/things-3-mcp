@@ -1,6 +1,7 @@
 import os
 from typing import Any, Optional
 import subprocess
+from urllib.parse import urlencode
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 import things
@@ -55,6 +56,35 @@ def get_config_value(key: str, default=None):
     if config is None:
         config = {}
     return config.get(key, default)
+
+
+def get_token() -> Optional[str]:
+    """Resolve auth token from request config, stdio config, or env."""
+    token = get_config_value("token")
+    if token:
+        return token
+    if _token:
+        return _token
+    return os.getenv("THINGS_TOKEN") or os.getenv("TOKEN")
+
+
+def build_things_url(command: str, token: Optional[str], reveal: bool, **arguments: Any) -> str:
+    params: dict[str, Any] = {}
+    if token:
+        params["auth-token"] = token
+    if reveal is not None:
+        params["reveal"] = "true" if reveal else "false"
+    for key, value in arguments.items():
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            params[key] = "true" if value else "false"
+        else:
+            params[key] = value
+    query = urlencode(params, doseq=True)
+    if query:
+        return f"things:///{command}?{query}"
+    return f"things:///{command}"
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -162,11 +192,12 @@ async def get_task(id: str) -> list[Any]:
 
 
 def run_command(command: str, **arguments: Any) -> None:
+    token = get_token()
     subprocess.Popen(
         [
             "open",
             "-g",
-            things.url(command=command, token=token, reveal=False, **arguments),
+            build_things_url(command=command, token=token, reveal=False, **arguments),
         ]
     )
 
@@ -338,7 +369,7 @@ def main():
         # You can publish this to uv for users to run locally
         print("Things 3 MCP Server starting in stdio mode...")
 
-        token = os.getenv("TOKEN")
+        token = os.getenv("THINGS_TOKEN") or os.getenv("TOKEN")
         # Set the server token for stdio mode
         handle_config({"token": token})
 
