@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local run scripts with secrets
+run_things_mcp.sh
