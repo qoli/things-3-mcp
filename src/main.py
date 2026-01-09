@@ -1,7 +1,10 @@
 import os
+import json
+import time
+from datetime import datetime, timedelta
 from typing import Any, Optional
 import subprocess
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 import things
@@ -30,6 +33,9 @@ def handle_config(config: dict):
 
 # Store token for stdio mode (backwards compatibility)
 _token: Optional[str] = None
+_recent_commands: dict[str, float] = {}
+_DEDUPE_WINDOW_SECONDS = 3.0
+_TODO_DEDUPE_WINDOW_SECONDS = 120.0
 
 
 def get_request_config() -> dict:
@@ -81,10 +87,21 @@ def build_things_url(command: str, token: Optional[str], reveal: bool, **argumen
             params[key] = "true" if value else "false"
         else:
             params[key] = value
-    query = urlencode(params, doseq=True)
+    query = urlencode(params, doseq=True, quote_via=quote)
     if query:
         return f"things:///{command}?{query}"
     return f"things:///{command}"
+
+
+def should_dedupe(command: str, token: Optional[str], arguments: dict[str, Any]) -> bool:
+    payload = {"command": command, "token": token, "arguments": arguments}
+    key = json.dumps(payload, sort_keys=True, ensure_ascii=True)
+    now = time.monotonic()
+    last = _recent_commands.get(key)
+    if last is not None and (now - last) < _DEDUPE_WINDOW_SECONDS:
+        return True
+    _recent_commands[key] = now
+    return False
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -193,6 +210,8 @@ async def get_task(id: str) -> list[Any]:
 
 def run_command(command: str, **arguments: Any) -> None:
     token = get_token()
+    if should_dedupe(command, token, arguments):
+        return
     subprocess.Popen(
         [
             "open",
@@ -200,6 +219,38 @@ def run_command(command: str, **arguments: Any) -> None:
             build_things_url(command=command, token=token, reveal=False, **arguments),
         ]
     )
+
+
+def has_recent_duplicate_todo(title: str, list_name: Optional[str]) -> bool:
+    """Best-effort de-dupe for rapid double-create across processes/clients."""
+    try:
+        candidates = things.tasks(
+            type="to-do",
+            status="incomplete",
+            last="1d",
+            search_query=title,
+        )
+    except Exception:
+        return False
+
+    now = datetime.now()
+    window_start = now - timedelta(seconds=_TODO_DEDUPE_WINDOW_SECONDS)
+    for task in candidates:
+        if task.get("title") != title:
+            continue
+        if list_name:
+            if task.get("project_title") != list_name and task.get("area_title") != list_name:
+                continue
+        created = task.get("created")
+        if not created:
+            continue
+        try:
+            created_dt = datetime.fromisoformat(created)
+        except ValueError:
+            continue
+        if window_start <= created_dt <= now:
+            return True
+    return False
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True, destructiveHint=False))
@@ -298,6 +349,9 @@ async def create_todo(
         arguments["when"] = when
     if deadline:
         arguments["deadline"] = deadline
+
+    if has_recent_duplicate_todo(title=title, list_name=list):
+        return
 
     run_command("add", **arguments)
 
