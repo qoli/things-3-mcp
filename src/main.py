@@ -10,7 +10,7 @@ from mcp.types import ToolAnnotations
 import things
 import uvicorn
 from starlette.middleware.cors import CORSMiddleware
-from middleware import SmitheryConfigMiddleware
+from middleware import SmitheryConfigMiddleware, RequestLoggingMiddleware
 
 
 mcp = FastMCP(
@@ -36,6 +36,11 @@ _token: Optional[str] = None
 _recent_commands: dict[str, float] = {}
 _DEDUPE_WINDOW_SECONDS = 3.0
 _TODO_DEDUPE_WINDOW_SECONDS = 120.0
+
+
+def log_event(kind: str, **data: Any) -> None:
+    payload = json.dumps(data, sort_keys=True, ensure_ascii=True, default=str)
+    print(f"MCP {kind}: {payload}")
 
 
 def get_request_config() -> dict:
@@ -107,25 +112,33 @@ def should_dedupe(command: str, token: Optional[str], arguments: dict[str, Any])
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_today() -> list[Any]:
     """Get today's todos and projects."""
-    return things.today()
+    result = things.today()
+    log_event("tool_result", name="get_today", count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_inbox() -> list[Any]:
     """Get inbox contents."""
-    return things.inbox()
+    result = things.inbox()
+    log_event("tool_result", name="get_inbox", count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_trash() -> list[Any]:
     """Get trash contents."""
-    return things.trash()
+    result = things.trash()
+    log_event("tool_result", name="get_trash", count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_logbook() -> list[Any]:
     """Get logbook contents."""
-    return things.logbook()
+    result = things.logbook()
+    log_event("tool_result", name="get_logbook", count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -135,61 +148,81 @@ async def get_completed(last: str = None) -> list[Any]:
     Args:
         last: Limit returned tasks to tasks created within the last X days, weeks, or years. For example: '3d', '5w', or '1y'.
     """
-    return things.completed(last=last)
+    result = things.completed(last=last)
+    log_event("tool_result", name="get_completed", last=last, count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_deadlines() -> list[Any]:
     """Get deadlines."""
-    return things.deadlines()
+    result = things.deadlines()
+    log_event("tool_result", name="get_deadlines", count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_anytime() -> list[Any]:
     """Get anytime todos and projects."""
-    return things.anytime()
+    result = things.anytime()
+    log_event("tool_result", name="get_anytime", count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_someday() -> list[Any]:
     """Get someday todos and projects."""
-    return things.someday()
+    result = things.someday()
+    log_event("tool_result", name="get_someday", count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_upcoming() -> list[Any]:
     """Get upcoming todos and projects."""
-    return things.upcoming()
+    result = things.upcoming()
+    log_event("tool_result", name="get_upcoming", count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_projects() -> list[Any]:
     """Get all projects."""
-    return things.projects()
+    result = things.projects()
+    log_event("tool_result", name="get_projects", count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_areas() -> list[Any]:
     """Get all areas."""
-    return things.areas()
+    result = things.areas()
+    log_event("tool_result", name="get_areas", count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_tags() -> list[Any]:
     """Get all tags."""
-    return things.tags()
+    result = things.tags()
+    log_event("tool_result", name="get_tags", count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_project_todos(id: str) -> list[Any]:
     """Get all todos for a project."""
-    return things.todos(project=id)
+    result = things.todos(project=id)
+    log_event("tool_result", name="get_project_todos", project=id, count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_area_todos(id: str) -> list[Any]:
     """Get all todos for an area."""
-    return things.todos(area=id)
+    result = things.todos(area=id)
+    log_event("tool_result", name="get_area_todos", area=id, count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -199,13 +232,17 @@ async def search(query: str) -> list[Any]:
     Args:
         query: Only pass the necessary keywords as if you were doing a Google search. If you didn't get a result, try a different query.
     """
-    return things.search(query)
+    result = things.search(query)
+    log_event("tool_result", name="search", query=query, count=len(result))
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_task(id: str) -> dict[str, Any]:
     """Get a task by ID."""
-    return things.get(id)
+    result = things.get(id)
+    log_event("tool_result", name="get_task", id=id, found=bool(result))
+    return result
 
 
 def run_command(command: str, **arguments: Any) -> dict[str, Any]:
@@ -227,8 +264,8 @@ def run_command(command: str, **arguments: Any) -> dict[str, Any]:
     return {"ok": True, "url": url}
 
 
-def has_recent_duplicate_todo(title: str, list_name: Optional[str]) -> bool:
-    """Best-effort de-dupe for rapid double-create across processes/clients."""
+def find_recent_duplicate_todos(title: str, list_name: Optional[str]) -> list[dict[str, Any]]:
+    """Return recent duplicate todo candidates for best-effort de-dupe."""
     try:
         candidates = things.tasks(
             type="to-do",
@@ -237,26 +274,43 @@ def has_recent_duplicate_todo(title: str, list_name: Optional[str]) -> bool:
             search_query=title,
         )
     except Exception:
-        return False
+        return []
 
     now = datetime.now()
     window_start = now - timedelta(seconds=_TODO_DEDUPE_WINDOW_SECONDS)
+    matches: list[tuple[datetime, dict[str, Any]]] = []
     for task in candidates:
-        if task.get("title") != title:
+        uuid = task.get("uuid")
+        task_title = task.get("title")
+        project_title = task.get("project_title")
+        area_title = task.get("area_title")
+        created = task.get("created")
+        if task_title != title:
+            print(f"Dedup check: uuid={uuid} action=skip reason=title_mismatch")
             continue
         if list_name:
-            if task.get("project_title") != list_name and task.get("area_title") != list_name:
+            if project_title != list_name and area_title != list_name:
+                print(f"Dedup check: uuid={uuid} action=skip reason=list_mismatch")
                 continue
-        created = task.get("created")
         if not created:
+            print(f"Dedup check: uuid={uuid} action=skip reason=missing_created")
             continue
         try:
             created_dt = datetime.fromisoformat(created)
         except ValueError:
+            print(f"Dedup check: uuid={uuid} action=skip reason=created_parse_error")
             continue
         if window_start <= created_dt <= now:
-            return True
-    return False
+            print(
+                "Dedup check: "
+                f"uuid={uuid} action=match "
+                f"created={created} project={project_title} area={area_title}"
+            )
+            matches.append((created_dt, task))
+            continue
+        print(f"Dedup check: uuid={uuid} action=skip reason=outside_window")
+    matches.sort(key=lambda item: item[0])
+    return [task for _, task in matches]
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True, destructiveHint=False))
@@ -290,7 +344,10 @@ async def update_todo(
     if deadline:
         arguments["deadline"] = deadline
 
-    return run_command("update", id=id, **arguments)
+    log_event("tool_call", name="update_todo", id=id, arguments=arguments)
+    result = run_command("update", id=id, **arguments)
+    log_event("tool_result", name="update_todo", result=result)
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True, destructiveHint=False))
@@ -324,7 +381,10 @@ async def update_project(
     if deadline:
         arguments["deadline"] = deadline
 
-    return run_command("update-project", id=id, **arguments)
+    log_event("tool_call", name="update_project", id=id, arguments=arguments)
+    result = run_command("update-project", id=id, **arguments)
+    log_event("tool_result", name="update_project", result=result)
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=False, destructiveHint=False))
@@ -356,14 +416,30 @@ async def create_todo(
     if deadline:
         arguments["deadline"] = deadline
 
-    if has_recent_duplicate_todo(title=title, list_name=list):
-        return {
-            "ok": False,
+    log_event("tool_call", name="create_todo", title=title, list=list, arguments=arguments)
+    duplicates = find_recent_duplicate_todos(title=title, list_name=list)
+    if duplicates:
+        keep = duplicates[0]
+        completed_duplicates: list[str] = []
+        for task in duplicates[1:]:
+            uuid = task.get("uuid")
+            if not uuid:
+                continue
+            completed_duplicates.append(uuid)
+            run_command("update", id=uuid, completed=True)
+        result = {
+            "ok": True,
             "deduped": True,
             "reason": "recent_duplicate",
+            "existing_uuid": keep.get("uuid"),
+            "completed_duplicates": completed_duplicates,
         }
+        log_event("tool_result", name="create_todo", result=result)
+        return result
 
-    return run_command("add", **arguments)
+    result = run_command("add", **arguments)
+    log_event("tool_result", name="create_todo", result=result)
+    return result
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=False, destructiveHint=False))
@@ -395,7 +471,10 @@ async def create_project(
     if deadline:
         arguments["deadline"] = deadline
 
-    return run_command("add-project", **arguments)
+    log_event("tool_call", name="create_project", title=title, area=area, arguments=arguments)
+    result = run_command("add-project", **arguments)
+    log_event("tool_result", name="create_project", result=result)
+    return result
 
 
 def main():
@@ -412,7 +491,7 @@ def main():
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
-            allow_credentials=False,
+            allow_credentials=True,
             allow_methods=["GET", "POST", "OPTIONS"],
             allow_headers=["*"],
             expose_headers=["mcp-session-id", "mcp-protocol-version"],
@@ -420,6 +499,7 @@ def main():
         )
 
         # Apply custom middleware for session config extraction
+        app = RequestLoggingMiddleware(app)
         app = SmitheryConfigMiddleware(app)
 
         # Use Smithery-required PORT environment variable

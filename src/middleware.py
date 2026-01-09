@@ -25,3 +25,37 @@ class SmitheryConfigMiddleware:
                 scope["smithery_config"] = {}
 
         await self.app(scope, receive, send)
+
+
+class RequestLoggingMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        status = {"code": None}
+
+        async def send_wrapper(message):
+            if message.get("type") == "http.response.start":
+                status["code"] = message.get("status")
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+        if status["code"] == 406:
+            headers = {
+                key.decode().lower(): value.decode()
+                for key, value in scope.get("headers", [])
+            }
+            method = scope.get("method", "")
+            path = scope.get("path", "")
+            print(
+                "406 Not Acceptable: "
+                f"method={method} path={path} "
+                f"accept={headers.get('accept')} "
+                f"content-type={headers.get('content-type')} "
+                f"user-agent={headers.get('user-agent')}"
+            )
